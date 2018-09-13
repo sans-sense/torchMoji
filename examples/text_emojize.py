@@ -8,6 +8,7 @@ import example_helper
 import json
 import csv
 import argparse
+import re
 
 import numpy as np
 import emoji
@@ -40,6 +41,7 @@ if __name__ == "__main__":
     argparser.add_argument('--text', type=str, required=True, help="Input text to emojize")
     argparser.add_argument('--maxlen', type=int, default=30, help="Max length of input text")
     args = argparser.parse_args()
+    number_top = 5
 
     # Tokenizing using dictionary
     with open(VOCAB_PATH, 'r') as f:
@@ -48,16 +50,22 @@ if __name__ == "__main__":
     st = SentenceTokenizer(vocabulary, args.maxlen)
 
     # Loading model
-    model = torchmoji_emojis(PRETRAINED_PATH)
+    model = torchmoji_emojis(PRETRAINED_PATH, True)
     # Running predictions
     tokenized, _, _ = st.tokenize_sentences([args.text])
+    splits = re.split("\W|\.",args.text)
     # Get sentence probability
-    prob = model(tokenized)[0]
-
+    raw_output, att_weights = model(tokenized)
+    prob = raw_output[0]
+    att_weights = att_weights.detach().numpy()
+    # import pdb; pdb.set_trace()
     # Top emoji id
-    emoji_ids = top_elements(prob, 5)
-
+    emoji_ids = top_elements(prob, number_top)
+    top_probs = map(lambda x: str(prob[x]), prob.argsort()[::-1][0:number_top])
+    bottom_probs = map(lambda x: str(prob[x]), prob.argsort()[::1][0:number_top])
+    key_words = " ".join(map(lambda x: splits[x], np.flip(att_weights.argsort(), 1)[:,0:5][0]))
     # map to emojis
     emojis = map(lambda x: EMOJIS[x], emoji_ids)
-
-    print(emoji.emojize("{} {}".format(args.text,' '.join(emojis)), use_aliases=True))
+    #emojis = map(lambda x: str(x), emoji_ids)
+    #print(emoji.emojize("{} {}".format(args.text,' '.join(emojis)), use_aliases=True))
+    print("{} {}, top -> {}, bottom -> {}, keywords -> {}".format(args.text,' '.join(emojis), ' '.join(top_probs), ' '.join(bottom_probs), key_words))
